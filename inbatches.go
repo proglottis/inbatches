@@ -1,3 +1,9 @@
+// Package inbatches allows fetching large datasets in smaller batches.
+//
+// Databases typically wait until they have collected the entire dataset
+// before streaming the data to the client. This causes a large delay between
+// starting the query and receiving the first result. Breaking the query into
+// batches can help mitigate this.
 package inbatches
 
 import (
@@ -10,6 +16,8 @@ type Params struct {
 
 type Query func(params Params) (*sql.Rows, error)
 
+// Rows provides a database/sql like interface for iterating over the rows of
+// the batches.
 type Rows struct {
 	*sql.Rows
 
@@ -19,6 +27,24 @@ type Rows struct {
 	err    error
 }
 
+// Of initiates a query in batches of limit rows. The query must be ordered so
+// that batches are consistent and can return all rows. query will be called
+// once per batch. Batches stop when there is an error or when query returns
+// less results than limit.
+//
+//     rows, err := inbatches.Of(1000, func(p Params) (*sql.Rows, error) {
+//     	return db.Query("SELECT ... ORDER BY id OFFSET ? LIMIT ?", p.Offset, p.Limit)
+//     })
+//     ...
+//     defer rows.Close()
+//     for rows.Next() {
+//     	var id int
+//     	var name string
+//     	err = rows.Scan(&id, &name)
+//     	...
+//     }
+//     err = rows.Err()
+//     ...
 func Of(limit int64, query Query) (*Rows, error) {
 	r := &Rows{
 		query:  query,
